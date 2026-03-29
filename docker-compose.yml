@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=StrongPassword123!
+    ports:
+      - "1433:1433"
+
+  gateway.api:
+    build:
+      context: .
+      dockerfile: src/Gateway/Gateway.API/Dockerfile
+    ports:
+      - "5000:8080"
+    depends_on:
+      - identity.api
+      - videomanagement.api
+      - streaming.api
+
+  identity.api:
+    build:
+      context: .
+      dockerfile: src/Services/Identity/Identity.API/Dockerfile
+    environment:
+      - ConnectionStrings__Default=Server=sqlserver,1433;Database=DDDProject;User Id=sa;Password=StrongPassword123!;TrustServerCertificate=True
+    depends_on:
+      - sqlserver
+
+  videomanagement.api:
+    build:
+      context: .
+      dockerfile: src/Services/VideoManagement/VideoManagement.API/Dockerfile
+    environment:
+      - ConnectionStrings__Default=Server=sqlserver,1433;Database=DDDProject;User Id=sa;Password=StrongPassword123!;TrustServerCertificate=True
+      - RabbitMq__Host=rabbitmq
+      - BlobStorage__Root=/app/blobs
+    volumes:
+      - blob_storage:/app/blobs
+    depends_on:
+      - sqlserver
+      - rabbitmq
+
+  transcoding.worker:
+    build:
+      context: .
+      dockerfile: src/Services/Transcoding/Transcoding.Worker/Dockerfile
+    environment:
+      - ConnectionStrings__Default=Server=sqlserver,1433;Database=DDDProject;User Id=sa;Password=StrongPassword123!;TrustServerCertificate=True
+      - RabbitMq__Host=rabbitmq
+      - BlobStorage__Root=/app/blobs
+    volumes:
+      - blob_storage:/app/blobs
+    depends_on:
+      - sqlserver
+      - rabbitmq
+
+  streaming.api:
+    build:
+      context: .
+      dockerfile: src/Services/Streaming/Streaming.API/Dockerfile
+    environment:
+      - BlobStorage__Root=/app/blobs
+      - VideoManagementApiBaseUrl=http://videomanagement.api:8080
+    volumes:
+      - blob_storage:/app/blobs
+    depends_on:
+      - videomanagement.api
+
+  webclient:
+    build:
+      context: src/Frontend/WebClient
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+
+volumes:
+  blob_storage:
