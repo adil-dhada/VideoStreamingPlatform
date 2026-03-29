@@ -38,6 +38,7 @@ public class UploadSession : AggregateRoot<Guid>
 
     public static UploadSession Create(Guid userId, string fileName, long fileSize, int totalChunks, int chunkSize)
     {
+        if (totalChunks <= 0) throw new ArgumentOutOfRangeException(nameof(totalChunks), "Total chunks must be greater than zero.");
         return new UploadSession(Guid.NewGuid(), userId, fileName, fileSize, totalChunks, chunkSize);
     }
 

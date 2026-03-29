@@ -61,4 +61,28 @@ public class VideoUploadedConsumerTests
         _publishEndpointMock.Verify(p => p.Publish(It.Is<TranscodingCompletedMessage>(m => m.VideoId == videoId), It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWorkMock.Verify(uow => uow.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
+
+    [Fact]
+    public async Task Consume_WithFailingTranscode_ShouldCatchErrorAndPublishFailedMessage()
+    {
+        // Arrange
+        var videoId = Guid.NewGuid();
+        var msg = new VideoUploadedMessage(videoId, Guid.NewGuid(), "path", "file.mp4", DateTime.UtcNow);
+        var contextMock = new Mock<ConsumeContext<VideoUploadedMessage>>();
+        contextMock.Setup(c => c.Message).Returns(msg);
+        contextMock.Setup(c => c.CancellationToken).Returns(CancellationToken.None);
+
+        _jobRepositoryMock.Setup(repo => repo.GetByVideoIdAsync(videoId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranscodingJob?)null);
+
+        _ffmpegServiceMock.Setup(s => s.TranscodeAsync(videoId, "path", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("FFmpeg error"));
+
+        // Act
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _consumer.Consume(contextMock.Object));
+
+        // Assert
+        _jobRepositoryMock.Verify(repo => repo.UpdateAsync(It.IsAny<TranscodingJob>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _publishEndpointMock.Verify(p => p.Publish(It.Is<TranscodingFailedMessage>(m => m.VideoId == videoId && m.Reason == "FFmpeg error"), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
