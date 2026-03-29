@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Shared.BuildingBlocks;
 using VideoManagement.Application.Abstractions;
+using VideoManagement.Application.Consumers;
 using VideoManagement.Domain;
 using VideoManagement.Infrastructure.Data;
 
@@ -26,6 +27,9 @@ builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Video
 
 builder.Services.AddMassTransit(x =>
 {
+    x.AddConsumer<TranscodingCompletedConsumer>();
+    x.AddConsumer<TranscodingFailedConsumer>();
+
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:Host"] ?? "rabbitmq", "/", h =>
@@ -33,6 +37,13 @@ builder.Services.AddMassTransit(x =>
             h.Username("guest");
             h.Password("guest");
         });
+        
+        cfg.ReceiveEndpoint("video-management-events", e =>
+        {
+            e.ConfigureConsumer<TranscodingCompletedConsumer>(ctx);
+            e.ConfigureConsumer<TranscodingFailedConsumer>(ctx);
+        });
+
         cfg.ConfigureEndpoints(ctx);
     });
 });
